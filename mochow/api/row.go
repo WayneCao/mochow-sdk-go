@@ -140,6 +140,62 @@ func QueryRow(cli client.Client, args *QueryRowArgs) (*QueryRowResult, error) {
 	return result, nil
 }
 
+func VectorSearch(cli client.Client, args *VectorSearchArgs) (*SearchResult, error) {
+	return search(cli, args.Database, args.Table, args.Request)
+}
+
+func BM25Search(cli client.Client, args *BM25SearchArgs) (*SearchResult, error) {
+	return search(cli, args.Database, args.Table, args.Request)
+}
+
+func HybridSearch(cli client.Client, args *HybridSearchArgs) (*SearchResult, error) {
+	return search(cli, args.Database, args.Table, args.Request)
+}
+
+func search(cli client.Client, database string, table string, request searchRequest) (*SearchResult, error) {
+	args := request.toDict()
+	args["database"] = database
+	args["table"] = table
+
+	jsonBytes, err := sonic.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+	body, err := client.NewBodyFromBytes(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &client.BceRequest{}
+	req.SetURI(getRowURI())
+	req.SetMethod(http.Post)
+	req.SetParam(request.requestType(), "")
+	req.SetBody(body)
+
+	resp := &client.BceResponse{}
+	if err := cli.SendRequest(req, resp); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &SearchResult{IsBatch: request.isBatch()}
+	if result.IsBatch {
+		result.BatchRows = &BatchSearchRowResult{}
+		if err := resp.ParseJSONBody(result.BatchRows); err != nil {
+			return nil, err
+		}
+	} else {
+		result.Rows = &SearchRowResult{}
+		if err := resp.ParseJSONBody(result.Rows); err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
+// Deprecated: you should use VectorSearch with VectorTopkSearchRequest or VectorRangeSearchRequest instead.
 func SearchRow(cli client.Client, args *SearchRowArgs) (*SearchRowResult, error) {
 	req := &client.BceRequest{}
 	req.SetURI(getRowURI())
@@ -227,6 +283,7 @@ func SelectRow(cli client.Client, args *SelectRowArgs) (*SelectRowResult, error)
 	return result, nil
 }
 
+// Deprecated: you should use VectorSearch with VectorBatchSearchRequest instead.
 func BatchSearchRow(cli client.Client, args *BatchSearchRowArgs) (*BatchSearchRowResult, error) {
 	req := &client.BceRequest{}
 	req.SetURI(getRowURI())

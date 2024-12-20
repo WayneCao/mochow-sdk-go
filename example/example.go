@@ -59,7 +59,6 @@ func (m *MochowTest) clearEnv() error {
 				}
 			}
 		}
-
 	}
 
 	// drop database if existed
@@ -115,6 +114,11 @@ func (m *MochowTest) createDatabaseAndTable() error {
 			NotNull:   true,
 			Dimension: 3,
 		},
+		{
+			FieldName: "segment",
+			FieldType: "TEXT",
+			NotNull:   true,
+		},
 	}
 
 	// Indexes
@@ -137,6 +141,16 @@ func (m *MochowTest) createDatabaseAndTable() error {
 			},
 			AutoBuild:       true,
 			AutoBuildPolicy: autoBuildPolicy.Params(),
+		},
+		{
+			IndexName:       "book_segment_inverted_idx",
+			IndexType:       api.InvertedIndex,
+			Fields:          []string{"segment"},
+			FieldAttributes: []api.InvertedIndexFieldAttribute{api.Analyzed},
+			Params: api.InvertedIndexParams{
+				"analyzer":  api.ChineseAnalyzer,
+				"parseMode": api.FineMode,
+			},
 		},
 	}
 
@@ -180,6 +194,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "吴承恩",
 				"page":     21,
 				"vector":   []float32{0.2123, 0.21, 0.213},
+				"segment":  "富贵功名，前缘分定，为人切莫欺心。",
 			},
 		},
 		{
@@ -189,6 +204,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "吴承恩",
 				"page":     22,
 				"vector":   []float32{0.2123, 0.22, 0.213},
+				"segment":  "正大光明，忠良善果弥深。些些狂妄天加谴，眼前不遇待时临。",
 			},
 		},
 		{
@@ -198,6 +214,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "罗贯中",
 				"page":     23,
 				"vector":   []float32{0.2123, 0.23, 0.213},
+				"segment":  "细作探知这个消息，飞报吕布。",
 			},
 		},
 		{
@@ -207,6 +224,17 @@ func (m *MochowTest) upsertData() error {
 				"author":   "罗贯中",
 				"page":     24,
 				"vector":   []float32{0.2123, 0.24, 0.213},
+				"segment":  "布大惊，与陈宫商议。宫曰：“闻刘玄德新领徐州，可往投之。” 布从其言，竟投徐州来。有人报知玄德。",
+			},
+		},
+		{
+			Fields: map[string]interface{}{
+				"id":       "0005",
+				"bookName": "三国演义",
+				"author":   "罗贯中",
+				"page":     25,
+				"vector":   []float32{0.2123, 0.24, 0.213},
+				"segment":  "玄德曰：“布乃当今英勇之士，可出迎之。”糜竺曰：“吕布乃虎狼之徒，不可收留；收则伤人矣。",
 			},
 		},
 	}
@@ -276,6 +304,7 @@ func (m *MochowTest) updateData() error {
 			"bookName": "红楼梦",
 			"author":   "曹雪芹",
 			"page":     100,
+			"segment":  "满纸荒唐言，一把辛酸泪",
 		},
 	}
 	err := m.client.UpdateRow(updateArgs)
@@ -286,7 +315,7 @@ func (m *MochowTest) updateData() error {
 	return nil
 }
 
-func (m *MochowTest) searchData() error {
+func (m *MochowTest) topkSearch() error {
 	// rebuild vector index
 	if err := m.client.RebuildIndex(m.database, m.table, "vector_idx"); err != nil {
 		log.Fatalf("Fail to rebuild index due to error: %v", err)
@@ -302,50 +331,124 @@ func (m *MochowTest) searchData() error {
 	}
 
 	// search
-	hnswParams := api.NewSearchParams()
-	hnswParams.AddEf(200)
-	hnswParams.AddLimit(10)
+	vector := api.FloatVector([]float32{0.3123, 0.43, 0.213})
 
-	// single ann search params
-	searchArgs := &api.SearchRowArgs{
+	searchArgs := &api.VectorSearchArgs{
 		Database: m.database,
 		Table:    m.table,
-		ANNS: &api.ANNSearchParams{
-			VectorField:  "vector",
-			VectorFloats: []float32{0.3123, 0.43, 0.213},
-			Filter:       "bookName='三国演义'",
-			Params:       hnswParams,
-		},
-		RetrieveVector: false,
+		Request: api.VectorTopkSearchRequest{}.
+			New("vector", vector, 5).
+			Filter("bookName='三国演义'").
+			Config(api.VectorSearchConfig{}.New().Ef(200)),
 	}
-	searchResult, err := m.client.SearchRow(searchArgs)
+
+	searchResult, err := m.client.VectorSearch(searchArgs)
 	if err != nil {
 		log.Fatalf("Fail to search row due to error: %v", err)
 		return err
 	}
-	log.Printf("search result: %+v", searchResult)
 
-	// batch ann search params
-	batchSearchArgs := &api.BatchSearchRowArgs{
+	log.Printf("topk search result: %+v", searchResult.Rows)
+	return nil
+}
+
+func (m *MochowTest) rangeSearch() error {
+	vector := api.FloatVector([]float32{0.3123, 0.43, 0.213})
+
+	searchArgs := &api.VectorSearchArgs{
 		Database: m.database,
 		Table:    m.table,
-		ANNS: &api.BatchANNSearchParams{
-			VectorField: "vector",
-			VectorFloats: [][]float32{
-				{0.3123, 0.43, 0.213},
-				{0.5512, 0.33, 0.43},
-			},
-			Filter: "bookName='三国演义'",
-			Params: hnswParams,
-		},
-		RetrieveVector: false,
+		Request: api.VectorRangeSearchRequest{}.
+			New("vector", vector, api.DistanceRange{Min: 0, Max: 20}).
+			Filter("bookName='三国演义'").
+			Limit(15).
+			Config(api.VectorSearchConfig{}.New().Ef(200)),
 	}
-	batchSearchResult, err := m.client.BatchSearchRow(batchSearchArgs)
+
+	searchResult, err := m.client.VectorSearch(searchArgs)
+	if err != nil {
+		log.Fatalf("Fail to search row due to error: %v", err)
+		return err
+	}
+
+	log.Printf("range search result: %+v", searchResult.Rows)
+	return nil
+}
+
+func (m *MochowTest) batchSearch() error {
+	vectors := []api.Vector{
+		api.FloatVector{0.3123, 0.43, 0.213},
+		api.FloatVector{0.5512, 0.33, 0.43},
+	}
+
+	searchArgs := &api.VectorSearchArgs{
+		Database: m.database,
+		Table:    m.table,
+		Request: api.VectorBatchSearchRequest{}.New("vector", vectors).
+			Filter("bookName='三国演义'").
+			Limit(10).
+			Config(api.VectorSearchConfig{}.New().Ef(200)).
+			Projections([]string{"id", "bookName", "author", "page"}),
+	}
+
+	searchResult, err := m.client.VectorSearch(searchArgs)
 	if err != nil {
 		log.Fatalf("Fail to batch search row due to error: %v", err)
 		return err
 	}
-	log.Printf("batch search result: %+v", batchSearchResult)
+
+	log.Printf("batch search result: %+v", searchResult.BatchRows)
+
+	return nil
+}
+
+func (m *MochowTest) bm25Search() error {
+	searchArgs := &api.BM25SearchArgs{
+		Database: m.database,
+		Table:    m.table,
+		Request: api.BM25SearchRequest{}.
+			New("book_segment_inverted_idx", "吕布").
+			Limit(12).
+			Filter("bookName='三国演义'").
+			ReadConsistency("STRONG").
+			Projections([]string{"id", "vector"}),
+	}
+
+	searchResult, err := m.client.BM25Search(searchArgs)
+	if err != nil {
+		log.Fatalf("Fail to search row due to error: %v", err)
+		return err
+	}
+
+	log.Printf("bm25 search result: %+v", searchResult.Rows)
+	return nil
+}
+
+func (m *MochowTest) hybridSearch() error {
+	vector := api.FloatVector([]float32{0.3123, 0.43, 0.213})
+
+	request := api.HybridSearchRequest{}.
+		New(
+			api.VectorTopkSearchRequest{}.New("vector", vector, 15).Config(api.VectorSearchConfig{}.New().Ef(200)), /*vector search args*/
+			api.BM25SearchRequest{}.New("book_segment_inverted_idx", "吕布"),                                         /*BM25 search args*/
+			0.4, /*vector search weight*/
+			0.6 /*BM25 search weight*/).
+		Filter("bookName='三国演义'").
+		Limit(15)
+
+	searchArgs := &api.HybridSearchArgs{
+		Database: m.database,
+		Table:    m.table,
+		Request:  request,
+	}
+
+	searchResult, err := m.client.HybridSearch(searchArgs)
+	if err != nil {
+		log.Fatalf("Fail to search row due to error: %v", err)
+		return err
+	}
+
+	log.Printf("hybrid search result: %+v", searchResult.Rows)
 	return nil
 }
 
@@ -388,7 +491,7 @@ func (m *MochowTest) dropAndCreateVIndex() error {
 		_, err := m.client.DescIndex(m.database, m.table, "vector_idx")
 		if realErr, ok := err.(*client.BceServiceError); ok {
 			if realErr.Code == int(api.IndexNotExist) {
-				log.Printf("Index already dropped")
+				log.Print("Index already dropped")
 				break
 			}
 		}
@@ -473,8 +576,24 @@ func main() {
 	log.Println("Update row success.")
 
 	// Search data
-	if err := mochowTest.searchData(); err != nil {
-		log.Printf("Fail to search row, err:%v", err)
+	if err := mochowTest.topkSearch(); err != nil {
+		log.Printf("Fail to topk search, err:%v", err)
+		return
+	}
+	if err := mochowTest.rangeSearch(); err != nil {
+		log.Printf("Fail to range search, err:%v", err)
+		return
+	}
+	if err := mochowTest.batchSearch(); err != nil {
+		log.Printf("Fail to batch search, err:%v", err)
+		return
+	}
+	if err := mochowTest.bm25Search(); err != nil {
+		log.Printf("Fail to bm25 search, err:%v", err)
+		return
+	}
+	if err := mochowTest.hybridSearch(); err != nil {
+		log.Printf("Fail to hybrid search, err:%v", err)
 		return
 	}
 	log.Println("Search row success.")

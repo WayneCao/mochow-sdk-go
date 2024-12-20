@@ -217,8 +217,21 @@ func (c *Client) QueryRow(args *api.QueryRowArgs) (*api.QueryRowResult, error) {
 	return api.QueryRow(c, args)
 }
 
+// Deprecated: you should use VectorSearch with VectorTopkSearchRequest or VectorRangeSearchRequest instead.
 func (c *Client) SearchRow(args *api.SearchRowArgs) (*api.SearchRowResult, error) {
 	return api.SearchRow(c, args)
+}
+
+func (c *Client) VectorSearch(args *api.VectorSearchArgs) (*api.SearchResult, error) {
+	return api.VectorSearch(c, args)
+}
+
+func (c *Client) BM25Search(args *api.BM25SearchArgs) (*api.SearchResult, error) {
+	return api.BM25Search(c, args)
+}
+
+func (c *Client) HybridSearch(args *api.HybridSearchArgs) (*api.SearchResult, error) {
+	return api.HybridSearch(c, args)
 }
 
 func (c *Client) UpdateRow(args *api.UpdateRowArgs) error {
@@ -229,6 +242,7 @@ func (c *Client) SelectRow(args *api.SelectRowArgs) (*api.SelectRowResult, error
 	return api.SelectRow(c, args)
 }
 
+// Deprecated: you should use VectorSearch with VectorBatchSearchRequest instead.
 func (c *Client) BatchSearchRow(args *api.BatchSearchRowArgs) (*api.BatchSearchRowResult, error) {
 	return api.BatchSearchRow(c, args)
 }
