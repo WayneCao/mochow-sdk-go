@@ -35,6 +35,31 @@ const (
 
 	// scalar index type
 	SecondaryIndex IndexType = "SECONDARY"
+
+	// inverted index type
+	InvertedIndex IndexType = "INVERTED"
+)
+
+type InvertedIndexAnalyzer string
+
+const (
+	EnglishAnalyzer InvertedIndexAnalyzer = "ENGLISH_ANALYZER"
+	ChineseAnalyzer InvertedIndexAnalyzer = "CHINESE_ANALYZER"
+	DefaultAnalyzer InvertedIndexAnalyzer = "DEFAULT_ANALYZER"
+)
+
+type InvertedIndexParseMode string
+
+const (
+	CoarseMode InvertedIndexParseMode = "COARSE_MODE"
+	FineMode   InvertedIndexParseMode = "FINE_MODE"
+)
+
+type InvertedIndexFieldAttribute string
+
+const (
+	NotAnalyzed InvertedIndexFieldAttribute = "ATTRIBUTE_NOT_ANALYZED"
+	Analyzed    InvertedIndexFieldAttribute = "ATTRIBUTE_ANALYZED"
 )
 
 type FieldType string

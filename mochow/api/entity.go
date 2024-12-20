@@ -18,6 +18,7 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
@@ -60,19 +61,23 @@ func (f *FieldSchema) MarshalJSON() ([]byte, error) {
 	return field, nil
 }
 
+type IndexParams interface{}
 type VectorIndexParams map[string]interface{}
+type InvertedIndexParams map[string]interface{}
 
 type AutoBuildParams map[string]interface{}
 
 type IndexSchema struct {
-	IndexName       string            `json:"indexName,omitempty"`
-	IndexType       IndexType         `json:"indexType,omitempty"`
-	MetricType      MetricType        `json:"metricType,omitempty"`
-	Params          VectorIndexParams `json:"params,omitempty"`
-	Field           string            `json:"field,omitempty"`
-	State           IndexState        `json:"state,omitempty"`
-	AutoBuild       bool              `json:"autoBuild,omitempty"`
-	AutoBuildPolicy AutoBuildParams   `json:"autoBuildPolicy,omitempty"`
+	IndexName       string                        `json:"indexName,omitempty"`
+	IndexType       IndexType                     `json:"indexType,omitempty"`
+	MetricType      MetricType                    `json:"metricType,omitempty"`
+	Params          IndexParams                   `json:"params,omitempty"`
+	Field           string                        `json:"field,omitempty"`
+	Fields          []string                      `json:"fields,omitempty"`
+	FieldAttributes []InvertedIndexFieldAttribute `json:"fieldsIndexAttributes,omitempty"`
+	State           IndexState                    `json:"state,omitempty"`
+	AutoBuild       bool                          `json:"autoBuild,omitempty"`
+	AutoBuildPolicy AutoBuildParams               `json:"autoBuildPolicy,omitempty"`
 }
 
 type TableSchema struct {
@@ -165,6 +170,612 @@ type BatchANNSearchParams struct {
 	VectorFloats [][]float32   `json:"vectorFloats,omitempty"`
 	Params       *SearchParams `json:"params,omitempty'"`
 	Filter       string        `json:"filter,omitempty"`
+}
+
+type searchRequest interface {
+	requestType() string
+	toDict() map[string]interface{}
+	isBatch() bool
+}
+
+/*
+Optional configurable params for vector search.
+
+For each index algorithm, the params that could be set are:
+
+IndexType: HNSW
+Params: ef, pruning
+
+IndexType: HNSWPQ
+Params: ef, pruning
+
+IndexType: PUCK
+Params: searchCoarseCount
+
+IndexType: FLAT
+Params: None
+*/
+type VectorSearchConfig struct {
+	params map[string]interface{}
+}
+
+func (h VectorSearchConfig) New() *VectorSearchConfig {
+	return &VectorSearchConfig{
+		params: make(map[string]interface{}),
+	}
+}
+
+func (h *VectorSearchConfig) Ef(ef uint32) *VectorSearchConfig {
+	h.params["ef"] = ef
+	return h
+}
+
+func (h *VectorSearchConfig) Pruning(pruning bool) *VectorSearchConfig {
+	h.params["pruning"] = pruning
+	return h
+}
+
+func (h *VectorSearchConfig) SearchCoarseCount(searchCoarseCount uint32) *VectorSearchConfig {
+	h.params["searchCoarseCount"] = searchCoarseCount
+	return h
+}
+
+type vectorSearchRequest interface {
+	searchRequest
+
+	// Make sure user not pass e.g. 'BM25SearchRequest' to VectorSearch api
+	vectorSearchRequestDummyInterface()
+}
+
+type Vector interface {
+	name() string
+	representation() interface{}
+}
+
+type FloatVector []float32
+
+func (v FloatVector) name() string {
+	return "vectorFloats"
+}
+
+func (v FloatVector) representation() interface{} {
+	return []float32(v)
+}
+
+type request struct {
+	set map[string]bool
+}
+
+func (r request) mark(key string) {
+	r.set[key] = true
+}
+
+func (r request) isMarked(key string) bool {
+	_, ok := r.set[key]
+	return ok
+}
+
+type searchCommonFields struct {
+	request
+	partitionKey    map[string]interface{}
+	projections     []string
+	readConsistency string
+	limit           uint32
+	filter          string
+}
+
+func searchCommonFieldsToMap(r *searchCommonFields) map[string]interface{} {
+	fields := make(map[string]interface{})
+	if r.isMarked("partitionKey") {
+		fields["partitionKey"] = r.partitionKey
+	}
+	if r.isMarked("projections") {
+		fields["projections"] = r.projections
+	}
+	if r.isMarked("readConsistency") {
+		fields["readConsistency"] = r.readConsistency
+	}
+	if r.isMarked("filter") {
+		fields["filter"] = r.filter
+	}
+	if r.isMarked("limit") {
+		fields["limit"] = r.limit
+	}
+	return fields
+}
+
+type vectorSearchFields struct {
+	searchCommonFields
+	vectorField  string
+	vector       Vector
+	vectors      []Vector
+	distanceNear float64
+	distanceFar  float64
+	config       *VectorSearchConfig
+}
+
+func (r vectorSearchFields) fillSearchFields(fields *map[string]interface{}) {
+	anns := make(map[string]interface{})
+	if r.isMarked("vectorField") {
+		anns["vectorField"] = r.vectorField
+	}
+	if r.isMarked("vector") {
+		anns[r.vector.name()] = r.vector.representation()
+	}
+	if r.isMarked("vectors") && len(r.vectors) != 0 {
+		vectors := make([]interface{}, 0, len(r.vectors))
+		for _, vec := range r.vectors {
+			vectors = append(vectors, vec.representation())
+		}
+		anns[r.vectors[0].name()] = vectors
+	}
+	if r.isMarked("filter") {
+		anns["filter"] = r.filter
+	}
+
+	params := make(map[string]interface{})
+	if r.isMarked("config") {
+		for k, v := range r.config.params {
+			params[k] = v
+		}
+	}
+	if r.isMarked("distanceNear") {
+		params["distanceNear"] = r.distanceNear
+	}
+	if r.isMarked("distanceFar") {
+		params["distanceFar"] = r.distanceFar
+	}
+	if r.isMarked("limit") {
+		params["limit"] = r.limit
+	}
+	if len(params) != 0 {
+		anns["params"] = params
+	}
+
+	if len(anns) != 0 {
+		(*fields)["anns"] = anns
+	}
+
+	for k, v := range searchCommonFieldsToMap(&r.searchCommonFields) {
+		if k == "filter" || k == "limit" { // in "anns"
+			continue
+		}
+		(*fields)[k] = v
+	}
+}
+
+/**** Vector Topk Search ****/
+
+type VectorTopkSearchRequest struct {
+	vectorSearchRequest // interface
+	vectorSearchFields  // common fields
+}
+
+func (r VectorTopkSearchRequest) New(vectorField string, vector Vector, limit uint32) *VectorTopkSearchRequest {
+	r.set = make(map[string]bool, 0)
+
+	r.mark("vectorField")
+	r.vectorField = vectorField
+
+	r.mark("vector")
+	r.vector = vector
+
+	r.mark("limit")
+	r.limit = limit
+	return &r
+}
+
+func (r *VectorTopkSearchRequest) String() string {
+	return fmt.Sprintf("VectorTopkSearchRequest:%v", r.toDict())
+}
+
+func (r *VectorTopkSearchRequest) PartitionKey(partitionKey map[string]interface{}) *VectorTopkSearchRequest {
+	r.mark("partitionKey")
+	r.partitionKey = partitionKey
+	return r
+}
+
+func (r *VectorTopkSearchRequest) ReadConsistency(readConsistency string) *VectorTopkSearchRequest {
+	r.mark("readConsistency")
+	r.readConsistency = readConsistency
+	return r
+}
+
+func (r *VectorTopkSearchRequest) Projections(projections []string) *VectorTopkSearchRequest {
+	r.mark("projections")
+	r.projections = projections
+	return r
+}
+
+func (r *VectorTopkSearchRequest) Filter(filter string) *VectorTopkSearchRequest {
+	r.mark("filter")
+	r.filter = filter
+	return r
+}
+
+func (r *VectorTopkSearchRequest) Config(config *VectorSearchConfig) *VectorTopkSearchRequest {
+	r.mark("config")
+	r.config = config
+	return r
+}
+
+func (r *VectorTopkSearchRequest) requestType() string {
+	return "search"
+}
+
+func (r *VectorTopkSearchRequest) isBatch() bool {
+	return false
+}
+
+func (r *VectorTopkSearchRequest) toDict() map[string]interface{} {
+	fields := make(map[string]interface{})
+	r.fillSearchFields(&fields)
+	return fields
+}
+
+func (r *VectorTopkSearchRequest) vectorSearchRequestDummyInterface() {
+}
+
+/**** Vector Range Search ****/
+type DistanceRange struct {
+	Min, Max float64
+}
+
+type VectorRangeSearchRequest struct {
+	vectorSearchRequest // interface
+	vectorSearchFields  // common fields
+}
+
+func (r VectorRangeSearchRequest) New(vectorField string, vector Vector, distanceRange DistanceRange) *VectorRangeSearchRequest {
+	r.set = make(map[string]bool, 0)
+
+	r.mark("vectorField")
+	r.vectorField = vectorField
+
+	r.mark("vector")
+	r.vector = vector
+
+	r.mark("distanceNear")
+	r.distanceNear = distanceRange.Min
+
+	r.mark("distanceFar")
+	r.distanceFar = distanceRange.Max
+	return &r
+}
+
+func (r *VectorRangeSearchRequest) String() string {
+	return fmt.Sprintf("VectorRangeSearchRequest:%v", r.toDict())
+}
+
+func (r *VectorRangeSearchRequest) PartitionKey(partitionKey map[string]interface{}) *VectorRangeSearchRequest {
+	r.mark("partitionKey")
+	r.partitionKey = partitionKey
+	return r
+}
+
+func (r *VectorRangeSearchRequest) ReadConsistency(readConsistency string) *VectorRangeSearchRequest {
+	r.mark("readConsistency")
+	r.readConsistency = readConsistency
+	return r
+}
+
+func (r *VectorRangeSearchRequest) Projections(projections []string) *VectorRangeSearchRequest {
+	r.mark("projections")
+	r.projections = projections
+	return r
+}
+
+func (r *VectorRangeSearchRequest) Limit(limit uint32) *VectorRangeSearchRequest {
+	r.mark("limit")
+	r.limit = limit
+	return r
+}
+
+func (r *VectorRangeSearchRequest) Filter(filter string) *VectorRangeSearchRequest {
+	r.mark("filter")
+	r.filter = filter
+	return r
+}
+
+func (r *VectorRangeSearchRequest) Config(config *VectorSearchConfig) *VectorRangeSearchRequest {
+	r.mark("config")
+	r.config = config
+	return r
+}
+
+func (r *VectorRangeSearchRequest) requestType() string {
+	return "search"
+}
+
+func (r *VectorRangeSearchRequest) isBatch() bool {
+	return false
+}
+
+func (r *VectorRangeSearchRequest) toDict() map[string]interface{} {
+	fields := make(map[string]interface{})
+	r.fillSearchFields(&fields)
+	return fields
+}
+
+func (r *VectorRangeSearchRequest) vectorSearchRequestDummyInterface() {
+}
+
+/**** Vector Batch Search ****/
+type VectorBatchSearchRequest struct {
+	vectorSearchRequest // interface
+	vectorSearchFields  // common fields
+}
+
+func (r VectorBatchSearchRequest) New(vectorField string, vectors []Vector) *VectorBatchSearchRequest {
+	r.set = make(map[string]bool, 0)
+
+	r.mark("vectorField")
+	r.vectorField = vectorField
+
+	r.mark("vectors")
+	r.vectors = vectors
+	return &r
+}
+
+func (r *VectorBatchSearchRequest) String() string {
+	return fmt.Sprintf("VectorBatchSearchRequest:%v", r.toDict())
+}
+
+func (r *VectorBatchSearchRequest) PartitionKey(partitionKey map[string]interface{}) *VectorBatchSearchRequest {
+	r.mark("partitionKey")
+	r.partitionKey = partitionKey
+	return r
+}
+
+func (r *VectorBatchSearchRequest) ReadConsistency(readConsistency string) *VectorBatchSearchRequest {
+	r.mark("readConsistency")
+	r.readConsistency = readConsistency
+	return r
+}
+
+func (r *VectorBatchSearchRequest) Projections(projections []string) *VectorBatchSearchRequest {
+	r.mark("projections")
+	r.projections = projections
+	return r
+}
+
+func (r *VectorBatchSearchRequest) Limit(limit uint32) *VectorBatchSearchRequest {
+	r.mark("limit")
+	r.limit = limit
+	return r
+}
+
+func (r *VectorBatchSearchRequest) DistanceRange(distanceRange DistanceRange) *VectorBatchSearchRequest {
+	r.mark("distanceNear")
+	r.distanceNear = distanceRange.Min
+
+	r.mark("distanceFar")
+	r.distanceFar = distanceRange.Max
+	return r
+}
+
+func (r *VectorBatchSearchRequest) Filter(filter string) *VectorBatchSearchRequest {
+	r.mark("filter")
+	r.filter = filter
+	return r
+}
+
+func (r *VectorBatchSearchRequest) Config(config *VectorSearchConfig) *VectorBatchSearchRequest {
+	r.mark("config")
+	r.config = config
+	return r
+}
+
+func (r *VectorBatchSearchRequest) isBatch() bool {
+	return true
+}
+
+func (r *VectorBatchSearchRequest) requestType() string {
+	return "batchSearch"
+}
+
+func (r *VectorBatchSearchRequest) toDict() map[string]interface{} {
+	fields := make(map[string]interface{})
+	r.fillSearchFields(&fields)
+	return fields
+}
+
+func (r *VectorBatchSearchRequest) vectorSearchRequestDummyInterface() {
+}
+
+/**** BM25 Search ****/
+type bm25SearchRequest interface {
+	searchRequest
+
+	// Make sure user not pass e.g. 'VectorSearchRequest' to BM25Search api
+	bm25SearchRequestDummyInterface()
+}
+
+type BM25SearchRequest struct {
+	bm25SearchRequest  // interface
+	searchCommonFields // common fields
+	indexName          string
+	searchText         string
+}
+
+func (r BM25SearchRequest) New(indexName string, searchText string) *BM25SearchRequest {
+	r.set = make(map[string]bool, 0)
+
+	r.indexName = indexName
+	r.searchText = searchText
+	return &r
+}
+
+func (r *BM25SearchRequest) String() string {
+	return fmt.Sprintf("BM25SearchRequest:%v", r.toDict())
+}
+
+func (r *BM25SearchRequest) PartitionKey(partitionKey map[string]interface{}) *BM25SearchRequest {
+	r.mark("partitionKey")
+	r.partitionKey = partitionKey
+	return r
+}
+
+func (r *BM25SearchRequest) ReadConsistency(readConsistency string) *BM25SearchRequest {
+	r.mark("readConsistency")
+	r.readConsistency = readConsistency
+	return r
+}
+
+func (r *BM25SearchRequest) Projections(projections []string) *BM25SearchRequest {
+	r.mark("projections")
+	r.projections = projections
+	return r
+}
+
+func (r *BM25SearchRequest) Limit(limit uint32) *BM25SearchRequest {
+	r.mark("limit")
+	r.limit = limit
+	return r
+}
+
+func (r *BM25SearchRequest) Filter(filter string) *BM25SearchRequest {
+	r.mark("filter")
+	r.filter = filter
+	return r
+}
+
+func (r *BM25SearchRequest) toDict() map[string]interface{} {
+	fields := make(map[string]interface{})
+	for k, v := range searchCommonFieldsToMap(&r.searchCommonFields) {
+		fields[k] = v
+	}
+
+	bm25Params := make(map[string]interface{})
+	bm25Params["indexName"] = r.indexName
+	bm25Params["searchText"] = r.searchText
+	fields["BM25SearchParams"] = bm25Params
+
+	return fields
+}
+
+func (r *BM25SearchRequest) requestType() string {
+	return "search"
+}
+
+func (r *BM25SearchRequest) isBatch() bool {
+	return false
+}
+
+func (r *BM25SearchRequest) bm25SearchRequestDummyInterface() {
+}
+
+/**** Hybrid Search ****/
+
+type hybridSearchRequest interface {
+	searchRequest
+
+	// Make sure user not pass e.g. 'VectorSearchRequest' to HybridSearch api
+	hybridSearchRequestDummyInterface()
+}
+
+type HybridSearchRequest struct {
+	hybridSearchRequest // interface
+	searchCommonFields  // common fields
+
+	vectorRequest vectorSearchRequest
+	bm25Request   bm25SearchRequest
+	vectorWeight  float32
+	bm25Weight    float32
+}
+
+/*
+Note: 'limit' and 'filter' are global settings, and they will
+apply to both vector search and BM25 search. Avoid setting them in
+'bm25Request' or 'vectorRequest'.  Any settings in 'vectorRequest'
+or 'bm25Request' for 'limit' or 'filter' will be overridden by the
+general settings.
+*/
+func (r HybridSearchRequest) New(
+	vectorRequest vectorSearchRequest,
+	bm25Request bm25SearchRequest,
+	vectorWeight float32,
+	bm25Weight float32,
+) *HybridSearchRequest {
+	r.set = make(map[string]bool, 0)
+
+	r.vectorRequest = vectorRequest
+	r.bm25Request = bm25Request
+	r.vectorWeight = vectorWeight
+	r.bm25Weight = bm25Weight
+	return &r
+}
+
+func (r *HybridSearchRequest) String() string {
+	return fmt.Sprintf("HybridSearchRequest:%v", r.toDict())
+}
+
+func (r *HybridSearchRequest) PartitionKey(partitionKey map[string]interface{}) *HybridSearchRequest {
+	r.mark("partitionKey")
+	r.partitionKey = partitionKey
+	return r
+}
+
+func (r *HybridSearchRequest) ReadConsistency(readConsistency string) *HybridSearchRequest {
+	r.mark("readConsistency")
+	r.readConsistency = readConsistency
+	return r
+}
+
+func (r *HybridSearchRequest) Projections(projections []string) *HybridSearchRequest {
+	r.mark("projections")
+	r.projections = projections
+	return r
+}
+
+func (r *HybridSearchRequest) Limit(limit uint32) *HybridSearchRequest {
+	r.mark("limit")
+	r.limit = limit
+	return r
+}
+
+func (r *HybridSearchRequest) Filter(filter string) *HybridSearchRequest {
+	r.mark("filter")
+	r.filter = filter
+	return r
+}
+
+func (r *HybridSearchRequest) toDict() map[string]interface{} {
+	fields := make(map[string]interface{})
+
+	for k, v := range r.bm25Request.toDict() {
+		fields[k] = v
+	}
+	for k, v := range r.vectorRequest.toDict() {
+		fields[k] = v
+	}
+
+	for k, v := range searchCommonFieldsToMap(&r.searchCommonFields) {
+		fields[k] = v
+	}
+
+	_, ok := fields["anns"]
+	if ok {
+		fields["anns"].(map[string]interface{})["weight"] = r.vectorWeight
+	}
+
+	_, ok = fields["BM25SearchParams"]
+	if ok {
+		fields["BM25SearchParams"].(map[string]interface{})["weight"] = r.bm25Weight
+	}
+
+	return fields
+}
+
+func (r *HybridSearchRequest) isBatch() bool {
+	return false
+}
+
+func (r *HybridSearchRequest) requestType() string {
+	return "search"
+}
+
+func (r *HybridSearchRequest) hybridSearchRequestDummyInterface() {
 }
 
 type AutoBuildPolicy interface {

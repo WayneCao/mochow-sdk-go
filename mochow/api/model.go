@@ -144,6 +144,7 @@ type QueryRowResult struct {
 	Row Row `json:"row,omitempty"`
 }
 
+// Deprecated
 type SearchRowArgs struct {
 	Database        string                 `json:"database"`
 	Table           string                 `json:"table"`
@@ -157,11 +158,39 @@ type SearchRowArgs struct {
 type RowResult struct {
 	Row      Row     `json:"row"`
 	Distance float64 `json:"distance"`
+	Score    float64 `json:"score"`
 }
 
 type SearchRowResult struct {
 	SearchVectorFloats []float32   `json:"searchVectorFloats,omitempty"`
 	Rows               []RowResult `json:"rows,omitempty"`
+}
+
+// vector topk search, range search and batch search
+type VectorSearchArgs struct {
+	Database string
+	Table    string
+	Request  vectorSearchRequest
+}
+
+// BM25 search
+type BM25SearchArgs struct {
+	Database string
+	Table    string
+	Request  bm25SearchRequest
+}
+
+// hybrid search (vector + BM25)
+type HybridSearchArgs struct {
+	Database string
+	Table    string
+	Request  hybridSearchRequest
+}
+
+type SearchResult struct {
+	IsBatch   bool
+	Rows      *SearchRowResult      // for single search
+	BatchRows *BatchSearchRowResult // for batch search
 }
 
 type UpdateRowArgs struct {

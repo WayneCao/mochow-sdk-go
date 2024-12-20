@@ -26,7 +26,7 @@ import (
 
 // Constants and default values for the package bce
 const (
-	SdkVersion                      = "0.0.1"
+	SdkVersion                      = "2.0.1"
 	DefaultProtocol                 = "http"
 	DefaultRegion                   = "bj"
 	DefaultContentType              = "application/json;charset=utf-8"
