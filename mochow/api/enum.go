@@ -36,6 +36,9 @@ const (
 	// scalar index type
 	SecondaryIndex IndexType = "SECONDARY"
 
+	// filtering index type
+	FilteringIndex IndexType = "FILTERING"
+
 	// inverted index type
 	InvertedIndex IndexType = "INVERTED"
 )
@@ -89,6 +92,34 @@ const (
 
 	// vector field type
 	FieldTypeFloatVector FieldType = "FLOAT_VECTOR"
+
+	// array field type
+	FieldTypeArray FieldType = "ARRAY"
+)
+
+type ElementType string
+
+const (
+	ElementTypeBool        ElementType = "BOOL"
+	ElementTypeInt8        ElementType = "INT8"
+	ElementTypeUint8       ElementType = "UINT8"
+	ElementTypeInt16       ElementType = "INT16"
+	ElementTypeUint16      ElementType = "UINT16"
+	ElementTypeInt32       ElementType = "INT32"
+	ElementTypeUint32      ElementType = "UINT32"
+	ElementTypeInt64       ElementType = "INT64"
+	ElementTypeUint64      ElementType = "UINT64"
+	ElementTypeFloat       ElementType = "FLOAT"
+	ElementTypeDouble      ElementType = "DOUBLE"
+	ElementTypeDate        ElementType = "DATE"
+	ElementTypeDatetime    ElementType = "DATETIME"
+	ElementTypeTimestamp   ElementType = "TIMESTAMP"
+	ElementTypeString      ElementType = "STRING"
+	ElementTypeBinary      ElementType = "BINARY"
+	ElementTypeUUID        ElementType = "UUID"
+	ElementTypeText        ElementType = "TEXT"
+	ElementTypeTextGBK     ElementType = "TEXT_GBK"
+	ElementTypeTextGB18030 ElementType = "TEXT_GB18030"
 )
 
 type AutoBuildPolicyType string
@@ -123,8 +154,16 @@ const (
 type IndexState string
 
 const (
+	IndexStateInvalid  IndexState = "INVALID"
 	IndexStateBuilding IndexState = "BUILDING"
 	IndexStateNormal   IndexState = "NORMAL"
+)
+
+type IndexStructureType string
+
+const (
+	IndexStructureTypeDefault IndexStructureType = "DEFAULT"
+	IndexStructureTypeBitmap  IndexStructureType = "BITMAP"
 )
 
 type ServerErrCode int32
