@@ -30,13 +30,15 @@ type PartitionParams struct {
 }
 
 type FieldSchema struct {
-	FieldName     string    `json:"fieldName"`
-	FieldType     FieldType `json:"fieldType"`
-	PrimaryKey    bool      `json:"primaryKey"`
-	PartitionKey  bool      `json:"partitionKey"`
-	AutoIncrement bool      `json:"autoIncrement"`
-	NotNull       bool      `json:"notNull"`
-	Dimension     uint32    `json:"dimension"`
+	FieldName     string      `json:"fieldName"`
+	FieldType     FieldType   `json:"fieldType"`
+	PrimaryKey    bool        `json:"primaryKey"`
+	PartitionKey  bool        `json:"partitionKey"`
+	AutoIncrement bool        `json:"autoIncrement"`
+	NotNull       bool        `json:"notNull"`
+	Dimension     uint32      `json:"dimension"`
+	ElementType   ElementType `json:"elementType"`
+	MaxCapacity   uint32      `json:"maxCapacity"`
 }
 
 func (f *FieldSchema) MarshalJSON() ([]byte, error) {
@@ -54,6 +56,14 @@ func (f *FieldSchema) MarshalJSON() ([]byte, error) {
 	fields["partitionKey"] = f.PartitionKey
 	fields["autoIncrement"] = f.AutoIncrement
 	fields["notNull"] = f.NotNull
+
+	if len(f.ElementType) > 0 {
+		fields["elementType"] = f.ElementType
+	}
+	if f.MaxCapacity != 0 {
+		fields["maxCapacity"] = f.MaxCapacity
+	}
+
 	field, err := sonic.Marshal(fields)
 	if err != nil {
 		return nil, err
@@ -64,20 +74,186 @@ func (f *FieldSchema) MarshalJSON() ([]byte, error) {
 type IndexParams interface{}
 type VectorIndexParams map[string]interface{}
 type InvertedIndexParams map[string]interface{}
-
 type AutoBuildParams map[string]interface{}
 
+type FilteringIndexField struct {
+	Field              string             `json:"field"`
+	IndexStructureType IndexStructureType `json:"indexStructureType"`
+}
+
+func (f *FilteringIndexField) FromMapInterface(i interface{}) error {
+	var ok bool
+	switch v := i.(type) {
+	case map[string]interface{}:
+		if field, exist := v["field"]; exist {
+			if f.Field, ok = field.(string); !ok {
+				return fmt.Errorf("field should be string")
+			}
+		}
+		if indexStructureType, exist := v["indexStructureType"]; exist {
+			var structureTypeStr string
+			if structureTypeStr, ok = indexStructureType.(string); !ok {
+				return fmt.Errorf("invalid indexStructureType enum value")
+			}
+			f.IndexStructureType = IndexStructureType(structureTypeStr)
+		}
+	}
+	return nil
+}
+
 type IndexSchema struct {
-	IndexName       string                        `json:"indexName,omitempty"`
-	IndexType       IndexType                     `json:"indexType,omitempty"`
-	MetricType      MetricType                    `json:"metricType,omitempty"`
-	Params          IndexParams                   `json:"params,omitempty"`
-	Field           string                        `json:"field,omitempty"`
-	Fields          []string                      `json:"fields,omitempty"`
-	FieldAttributes []InvertedIndexFieldAttribute `json:"fieldsIndexAttributes,omitempty"`
-	State           IndexState                    `json:"state,omitempty"`
-	AutoBuild       bool                          `json:"autoBuild,omitempty"`
-	AutoBuildPolicy AutoBuildParams               `json:"autoBuildPolicy,omitempty"`
+	IndexName                    string
+	IndexType                    IndexType
+	MetricType                   MetricType
+	Params                       IndexParams
+	Field                        string
+	InvertedIndexFields          []string                      // for inverted index
+	InvertedIndexFieldAttributes []InvertedIndexFieldAttribute // for inverted index
+	FilterIndexFields            []FilteringIndexField         // for filtering index
+	State                        IndexState
+	AutoBuild                    bool
+	AutoBuildPolicy              AutoBuildParams
+}
+
+func (index IndexSchema) MarshalJSON() ([]byte, error) {
+	params := make(map[string]interface{})
+	// index name
+	if len(index.IndexName) > 0 {
+		params["indexName"] = index.IndexName
+	}
+	// index type
+	params["indexType"] = index.IndexType
+	// metric type
+	params["metricType"] = index.MetricType
+	// params
+	if index.Params != nil {
+		params["params"] = index.Params
+	}
+	// auto build
+	params["autoBuild"] = index.AutoBuild
+	params["autoBuildPolicy"] = index.AutoBuildPolicy
+	params["state"] = index.State
+
+	// vector index and secondary index field
+	if len(index.Field) > 0 {
+		params["field"] = index.Field
+	}
+
+	// handle conflicted index fields
+	switch index.IndexType {
+	case InvertedIndex:
+		// inverted index fields
+		if len(index.InvertedIndexFields) > 0 {
+			params["fields"] = index.InvertedIndexFields
+		}
+		// inverted index field attributes
+		if len(index.InvertedIndexFieldAttributes) > 0 {
+			params["fieldsIndexAttributes"] = index.InvertedIndexFieldAttributes
+		}
+	case FilteringIndex:
+		// filtering index fields
+		if len(index.FilterIndexFields) > 0 {
+			params["fields"] = index.FilterIndexFields
+		}
+	}
+	return sonic.Marshal(&params)
+}
+
+func (index *IndexSchema) UnmarshalJSON(data []byte) error {
+	ds := decoder.NewStreamDecoder(bytes.NewReader(data))
+	ds.UseNumber()
+	params := make(map[string]interface{})
+	err := ds.Decode(&params)
+	if err != nil {
+		return err
+	}
+
+	// index name
+	var ok bool
+	if indexName, exist := params["indexName"]; exist {
+		if index.IndexName, ok = indexName.(string); !ok {
+			return fmt.Errorf("indexName should be string")
+		}
+	}
+	// index type
+	if indexType, exist := params["indexType"]; exist {
+		var indexTypeStr string
+		if indexTypeStr, ok = indexType.(string); !ok {
+			return fmt.Errorf("indexType should be string")
+		}
+		index.IndexType = IndexType(indexTypeStr)
+	}
+	// metric type
+	if metricType, exist := params["metricType"]; exist {
+		var metricTypeStr string
+		if metricTypeStr, ok = metricType.(string); !ok {
+			return fmt.Errorf("metricType should be string")
+		}
+		index.MetricType = MetricType(metricTypeStr)
+	}
+	// index params
+	if indexParams, exist := params["params"]; exist {
+		index.Params = indexParams
+	}
+	// field
+	if indexField, exist := params["field"]; exist {
+		if index.Field, ok = indexField.(string); !ok {
+			return fmt.Errorf("field should be string")
+		}
+	}
+	// auto build
+	if autoBuild, exist := params["autoBuild"]; exist {
+		if index.AutoBuild, ok = autoBuild.(bool); !ok {
+			return fmt.Errorf("autoBuild should be bool")
+		}
+	}
+	if autoBuildPolicy, exist := params["autoBuildPolicy"]; exist {
+		if index.AutoBuildPolicy, ok = autoBuildPolicy.(map[string]interface{}); !ok {
+			return fmt.Errorf("invalid autoBuildPolicy")
+		}
+	}
+	// index state
+	if state, exist := params["state"]; exist {
+		index.State = IndexState(state.(string))
+	}
+	switch index.IndexType {
+	case InvertedIndex:
+		// inverted index fields
+		if fields, ok := params["fields"]; ok {
+			switch v := fields.(type) {
+			case []interface{}:
+				index.InvertedIndexFields = make([]string, len(v))
+				for i := 0; i < len(v); i++ {
+					index.InvertedIndexFields[i] = v[i].(string)
+				}
+			}
+		}
+		if attributes, ok := params["fieldsIndexAttributes"]; ok {
+			switch v := attributes.(type) {
+			case []interface{}:
+				index.InvertedIndexFieldAttributes = make([]InvertedIndexFieldAttribute, len(v))
+				for i := 0; i < len(v); i++ {
+					index.InvertedIndexFieldAttributes[i] = InvertedIndexFieldAttribute(v[i].(string))
+				}
+			}
+		}
+	case FilteringIndex:
+		// fields for filtering index
+		if fields, ok := params["fields"]; ok {
+			switch t := fields.(type) {
+			case []interface{}:
+				index.FilterIndexFields = make([]FilteringIndexField, len(t))
+				for i := 0; i < len(t); i++ {
+					var filteringIndexField FilteringIndexField
+					if err := filteringIndexField.FromMapInterface(t[i]); err != nil {
+						return err
+					}
+					index.FilterIndexFields[i] = filteringIndexField
+				}
+			}
+		}
+	}
+	return nil
 }
 
 type TableSchema struct {
@@ -851,3 +1027,5 @@ func NewAutoBuildIncrementPolicy() *AutoBuildIncrementPolicy {
 		baseAutoBuildPolicy: newBaseAutoBuildPolicy(AutoBuildPolicyIncrement),
 	}
 }
+
+//

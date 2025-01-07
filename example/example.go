@@ -116,8 +116,14 @@ func (m *MochowTest) createDatabaseAndTable() error {
 		},
 		{
 			FieldName: "segment",
-			FieldType: "TEXT",
+			FieldType: api.FieldTypeString,
 			NotNull:   true,
+		},
+		{
+			FieldName:   "arrField",
+			FieldType:   api.FieldTypeArray,
+			ElementType: api.ElementTypeString,
+			NotNull:     true,
 		},
 	}
 
@@ -129,6 +135,18 @@ func (m *MochowTest) createDatabaseAndTable() error {
 			IndexName: "book_name_idx",
 			Field:     "bookName",
 			IndexType: api.SecondaryIndex,
+		},
+		{
+			IndexName: "compound_filtering_idx",
+			IndexType: api.FilteringIndex,
+			FilterIndexFields: []api.FilteringIndexField{
+				{
+					Field: "bookName",
+				},
+				{
+					Field: "page",
+				},
+			},
 		},
 		{
 			IndexName:  "vector_idx",
@@ -143,10 +161,10 @@ func (m *MochowTest) createDatabaseAndTable() error {
 			AutoBuildPolicy: autoBuildPolicy.Params(),
 		},
 		{
-			IndexName:       "book_segment_inverted_idx",
-			IndexType:       api.InvertedIndex,
-			Fields:          []string{"segment"},
-			FieldAttributes: []api.InvertedIndexFieldAttribute{api.Analyzed},
+			IndexName:                    "book_segment_inverted_idx",
+			IndexType:                    api.InvertedIndex,
+			InvertedIndexFields:          []string{"segment"},
+			InvertedIndexFieldAttributes: []api.InvertedIndexFieldAttribute{api.Analyzed},
 			Params: api.InvertedIndexParams{
 				"analyzer":  api.ChineseAnalyzer,
 				"parseMode": api.FineMode,
@@ -194,6 +212,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "吴承恩",
 				"page":     21,
 				"vector":   []float32{0.2123, 0.21, 0.213},
+				"arrField": []string{},
 				"segment":  "富贵功名，前缘分定，为人切莫欺心。",
 			},
 		},
@@ -204,6 +223,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "吴承恩",
 				"page":     22,
 				"vector":   []float32{0.2123, 0.22, 0.213},
+				"arrField": []string{},
 				"segment":  "正大光明，忠良善果弥深。些些狂妄天加谴，眼前不遇待时临。",
 			},
 		},
@@ -214,6 +234,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "罗贯中",
 				"page":     23,
 				"vector":   []float32{0.2123, 0.23, 0.213},
+				"arrField": []string{"细作", "吕布"},
 				"segment":  "细作探知这个消息，飞报吕布。",
 			},
 		},
@@ -224,6 +245,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "罗贯中",
 				"page":     24,
 				"vector":   []float32{0.2123, 0.24, 0.213},
+				"arrField": []string{"吕布", "陈宫", "刘玄德"},
 				"segment":  "布大惊，与陈宫商议。宫曰：“闻刘玄德新领徐州，可往投之。” 布从其言，竟投徐州来。有人报知玄德。",
 			},
 		},
@@ -234,6 +256,7 @@ func (m *MochowTest) upsertData() error {
 				"author":   "罗贯中",
 				"page":     25,
 				"vector":   []float32{0.2123, 0.24, 0.213},
+				"arrField": []string{"玄德", "吕布", "糜竺"},
 				"segment":  "玄德曰：“布乃当今英勇之士，可出迎之。”糜竺曰：“吕布乃虎狼之徒，不可收留；收则伤人矣。",
 			},
 		},
