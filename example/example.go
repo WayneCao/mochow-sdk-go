@@ -5,9 +5,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/baidu/mochow-sdk-go/client"
-	"github.com/baidu/mochow-sdk-go/mochow"
-	"github.com/baidu/mochow-sdk-go/mochow/api"
+	"github.com/baidu/mochow-sdk-go/v2/client"
+	"github.com/baidu/mochow-sdk-go/v2/mochow"
+	"github.com/baidu/mochow-sdk-go/v2/mochow/api"
 )
 
 type MochowTest struct {

@@ -45,10 +45,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/baidu/mochow-sdk-go/auth"
-	"github.com/baidu/mochow-sdk-go/http"
-	"github.com/baidu/mochow-sdk-go/util"
-	"github.com/baidu/mochow-sdk-go/util/log"
+	"github.com/baidu/mochow-sdk-go/v2/auth"
+	"github.com/baidu/mochow-sdk-go/v2/http"
+	"github.com/baidu/mochow-sdk-go/v2/util"
+	"github.com/baidu/mochow-sdk-go/v2/util/log"
 )
 
 // Client is the general interface which can perform sending request. Different service

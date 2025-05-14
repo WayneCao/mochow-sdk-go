@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/baidu/mochow-sdk-go/util/log"
+	"github.com/baidu/mochow-sdk-go/v2/util/log"
 )
 
 // RetryPolicy defines the two methods to retry for sending request.

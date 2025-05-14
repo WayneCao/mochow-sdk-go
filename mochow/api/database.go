@@ -20,8 +20,8 @@ package api
 import (
 	"github.com/bytedance/sonic"
 
-	"github.com/baidu/mochow-sdk-go/client"
-	"github.com/baidu/mochow-sdk-go/http"
+	"github.com/baidu/mochow-sdk-go/v2/client"
+	"github.com/baidu/mochow-sdk-go/v2/http"
 )
 
 func CreateDatabase(cli client.Client, args *CreateDatabaseArgs) error {

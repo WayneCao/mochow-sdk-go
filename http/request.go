@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/baidu/mochow-sdk-go/util"
+	"github.com/baidu/mochow-sdk-go/v2/util"
 )
 
 // Reauest stands for the general http request structure to make request to the BCE services.
