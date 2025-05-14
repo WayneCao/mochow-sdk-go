@@ -19,9 +19,9 @@ package mochow
 import (
 	"errors"
 
-	"github.com/baidu/mochow-sdk-go/auth"
-	"github.com/baidu/mochow-sdk-go/client"
-	"github.com/baidu/mochow-sdk-go/mochow/api"
+	"github.com/baidu/mochow-sdk-go/v2/auth"
+	"github.com/baidu/mochow-sdk-go/v2/client"
+	"github.com/baidu/mochow-sdk-go/v2/mochow/api"
 )
 
 type Client struct {

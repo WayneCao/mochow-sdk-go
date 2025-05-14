@@ -19,8 +19,8 @@ package auth
 import (
 	"fmt"
 
-	"github.com/baidu/mochow-sdk-go/http"
-	"github.com/baidu/mochow-sdk-go/util/log"
+	"github.com/baidu/mochow-sdk-go/v2/http"
+	"github.com/baidu/mochow-sdk-go/v2/util/log"
 )
 
 // Signer abstracts the entity that implements the `Sign` method

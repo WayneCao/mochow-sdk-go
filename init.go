@@ -5,11 +5,11 @@
 package sdk
 
 import (
-	_ "github.com/baidu/mochow-sdk-go/auth"       // register auth package
-	_ "github.com/baidu/mochow-sdk-go/client"     // register client package
-	_ "github.com/baidu/mochow-sdk-go/http"       // register http package
-	_ "github.com/baidu/mochow-sdk-go/mochow"     // register mochow package
-	_ "github.com/baidu/mochow-sdk-go/mochow/api" // register api package
-	_ "github.com/baidu/mochow-sdk-go/util"       // register util package
-	_ "github.com/baidu/mochow-sdk-go/util/log"   // register log package
+	_ "github.com/baidu/mochow-sdk-go/v2/auth"       // register auth package
+	_ "github.com/baidu/mochow-sdk-go/v2/client"     // register client package
+	_ "github.com/baidu/mochow-sdk-go/v2/http"       // register http package
+	_ "github.com/baidu/mochow-sdk-go/v2/mochow"     // register mochow package
+	_ "github.com/baidu/mochow-sdk-go/v2/mochow/api" // register api package
+	_ "github.com/baidu/mochow-sdk-go/v2/util"       // register util package
+	_ "github.com/baidu/mochow-sdk-go/v2/util/log"   // register log package
 )

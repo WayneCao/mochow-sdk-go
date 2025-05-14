@@ -6,7 +6,7 @@
 
 直接从github下载，使用`go get`工具从github进行下载：
 ```
-go get github.com/baidu/mochow-sdk-go
+go get github.com/baidu/mochow-sdk-go/v2
 ```
 目前GO SDK可以在go1.17及以上环境下运行。
 
@@ -22,9 +22,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/baidu/mochow-sdk-go/client"
-	"github.com/baidu/mochow-sdk-go/mochow"
-	"github.com/baidu/mochow-sdk-go/mochow/api"
+	"github.com/baidu/mochow-sdk-go/v2/client"
+	"github.com/baidu/mochow-sdk-go/v2/mochow"
+	"github.com/baidu/mochow-sdk-go/v2/mochow/api"
 )
 
 func main() {

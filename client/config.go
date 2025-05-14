@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/baidu/mochow-sdk-go/auth"
+	"github.com/baidu/mochow-sdk-go/v2/auth"
 )
 
 // Constants and default values for the package bce

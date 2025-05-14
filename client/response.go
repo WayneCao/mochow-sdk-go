@@ -22,7 +22,7 @@ import (
 
 	"github.com/bytedance/sonic/decoder"
 
-	"github.com/baidu/mochow-sdk-go/http"
+	"github.com/baidu/mochow-sdk-go/v2/http"
 )
 
 // BceResponse defines the response structure for receiving BCE services response.
