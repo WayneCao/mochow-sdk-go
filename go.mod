@@ -1,4 +1,4 @@
-module github.com/baidu/mochow-sdk-go
+module github.com/baidu/mochow-sdk-go/v2
 
 go 1.17
 
