@@ -2,8 +2,9 @@ module github.com/baidu/mochow-sdk-go/v2
 
 go 1.17
 
+require github.com/bytedance/sonic v1.11.8
+
 require (
-	github.com/bytedance/sonic v1.11.8
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
